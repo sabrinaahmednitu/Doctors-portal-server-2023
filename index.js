@@ -53,8 +53,8 @@ function sendAppointmentEmail(booking) {
 
   //step -5
   var email = {
-    from: process.env.EMAIL_SENDER,
     to: patient,
+    from: process.env.EMAIL_SENDER ,
     subject: `Your Apppointment for ${treatment} is on ${date} at ${slot} is confirmed`,
     text: `Your Apppointment for ${treatment} is on ${date} at ${slot} is confirmed`,
     html: `
@@ -67,7 +67,7 @@ function sendAppointmentEmail(booking) {
     <p>Bangladesh</p>
     <a href="https://web.programming-hero.com/">unsubscribe</a>
     </div>
-    ` 
+    `,
   };
 
   //step -6
