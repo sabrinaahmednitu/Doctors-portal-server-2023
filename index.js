@@ -2,13 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require("jsonwebtoken");
 require('dotenv').config();
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 //nodemailer sendgrid 
 //step -1
 var nodemailer = require("nodemailer");
 var sgTransport = require("nodemailer-sendgrid-transport");
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -37,6 +38,7 @@ function verifyJWT(req, res, next) {
 
 
 //emailer sendgrid
+//booking email function
 //step -2
 const emailSenderOptions = {
   auth: {
@@ -51,15 +53,16 @@ const emailClient = nodemailer.createTransport(sgTransport(emailSenderOptions));
 function sendAppointmentEmail(booking) {
   const {patient ,patientName ,treatment ,date ,slot} = booking;
 
+  
   //step -5
   var email = {
+    from: process.env.EMAIL_SENDER,
     to: patient,
-    from: process.env.EMAIL_SENDER ,
     subject: `Your Apppointment for ${treatment} is on ${date} at ${slot} is confirmed`,
     text: `Your Apppointment for ${treatment} is on ${date} at ${slot} is confirmed`,
     html: `
     <div>
-    <p>Hello ${patientName} </p>
+    <p>Hello ${patientName}, </p>
     <h3>Your Appointment for ${treatment} is confirmed</h3>
     <p>Looking forward to seeing you on ${date} at ${slot} .</p>
     <h3>Our Address </h3>
@@ -67,7 +70,7 @@ function sendAppointmentEmail(booking) {
     <p>Bangladesh</p>
     <a href="https://web.programming-hero.com/">unsubscribe</a>
     </div>
-    `,
+    `
   };
 
   //step -6
@@ -82,6 +85,40 @@ function sendAppointmentEmail(booking) {
 
 }
 
+//payment email function
+function sendPaymentConformationEmail(booking) {
+  const { patient, patientName, treatment, date, slot } = booking;
+
+  //step -5
+  var email = {
+    from: process.env.EMAIL_SENDER,
+    to: patient,
+    subject: `We have received your payment for ${treatment} is on ${date} at ${slot} is confirmed`,
+    text: `Your payment for this Apppointment ${treatment} is on ${date} at ${slot} is confirmed`,
+    html: `
+    <div>
+    <p>Hello ${patientName}, </p>
+    <h3>Thank you for your payment . </h3>
+    <h3>We have received your payment</h3>
+    <p>Looking forward to seeing you on ${date} at ${slot} .</p>
+    <h3>Our Address </h3>
+    <p>sonadanga khhulna </p>
+    <p>Bangladesh</p>
+    <a href="https://web.programming-hero.com/">unsubscribe</a>
+    </div>
+    `
+  };
+
+  //step -6
+  emailClient.sendMail(email, function (err, info) {
+    if (err) {
+      console.log(err);
+    } else {
+      console.log("Message sent : ", info);
+    }
+  });
+}
+
 async function run() {
   try {
     await client.connect();
@@ -89,6 +126,7 @@ async function run() {
     const bookingCollection = client.db("doctors_portal2023").collection("bookings");
     const userCollection = client.db("doctors_portal2023").collection("users");
     const doctorCollection = client.db("doctors_portal2023").collection("doctors");
+    const paymentCollection = client.db("doctors_portal2023").collection("payments");
 
     const verifyAdmin = async (req, res, next)=>{
       const requester = req.decoded.email;
@@ -100,6 +138,21 @@ async function run() {
         res.status(403).send({ message: 'forbidden' });
       }
     }
+
+    //payment api
+    app.post("/create-payment-intent",verifyJWT, async (req, res) => {
+      const service = req.body;
+      const price = service.price;
+      const amount = price*100;;
+      
+      // Create a PaymentIntent with the order amount and currency
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ['card']
+      });
+      res.send({ clientSecret: paymentIntent.client_secret });
+    });
 
     //sob data dekhte pabo service er
     app.get("/service", async (req, res) => {
@@ -183,7 +236,7 @@ async function run() {
     });
 
     //dashboard e booking jabe ai api dea
-    app.get("/booking", verifyJWT, async (req, res) => {
+    app.get("/booking", verifyJWT, async(req, res) => {
       const patient = req.query.patient;
       const decodedEmail = req.decoded.email;
       if (patient === decodedEmail) {
@@ -195,8 +248,10 @@ async function run() {
       }
     });
 
+    
+
     // modal e dawa information gulo database e chole asbe
-    app.post("/booking", async (req, res) => {
+    app.post("/booking", async(req, res) => {
       const booking = req.body;
       const query = {
         treatment: booking.treatment,
@@ -212,6 +267,29 @@ async function run() {
       console.log('sending email')
        sendAppointmentEmail(booking);
       return res.send({ success: true, result });
+    });
+
+
+    app.patch("/booking/:id",verifyJWT, async(req, res) => {
+      const id = req.params.id;
+      const payment = req.body;
+      const filter = { _id: ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          paid: true,
+          transactionId: payment.transactionId
+        }
+      }
+       const result = await paymentCollection.insertOne(payment);
+      const updatedBooking = await bookingCollection.updateOne(filter, updatedDoc);
+      res.send(updatedDoc);
+    })
+
+    app.get('/booking/:id', verifyJWT, async(req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) };
+      const booking = await bookingCollection.findOne(query);
+      res.send(booking);
     });
 
 
