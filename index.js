@@ -24,9 +24,10 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 function verifyJWT(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return res.status(401).send({ message: 'UnAuthorizes access' });
+    return res.status(401).send({ message: 'UnAuthorized access' });
   }
   const token = authHeader.split(' ')[1];
+  //verify a token symmetric code 
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
     if (err){
       return res.status(403).send({message : 'Forbidden access'})
@@ -219,6 +220,7 @@ async function run() {
       //step 3: for each service ,find bookings for the service
       services.forEach((service) => {
         //step:4 find bookings for the service .output :[{},{},{}]
+        //booking(treatment) = == jodi service(name) er stahe match kore
         const serviceBookings = bookings.filter(
           (book) => book.treatment === service.name
         );
